@@ -48,30 +48,58 @@ namespace MailClient.Services
             if (isOAuth2)
             {
                 var sasl = new SaslMechanismOAuth2(email, accessToken);
-                await _imapClient.AuthenticateAsync(sasl);
 
-                // Lấy danh sách mailbox thực tế
+                try
+                {
+                    await _imapClient.AuthenticateAsync(sasl);
+                }
+                catch (Exception ex)
+                {
+                    System.Windows.Forms.MessageBox.Show(
+                        $"Lỗi xác thực IMAP OAuth2: {ex.Message}\n{ex.StackTrace}",
+                        "IMAP OAuth2 Error", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Error);
+                    throw;
+                }
+
+                // Kiểm tra trạng thái xác thực
+                if (!_imapClient.IsAuthenticated)
+                {
+                    System.Windows.Forms.MessageBox.Show(
+                        "IMAP OAuth2 authentication failed. Token có thể không hợp lệ, scope sai, hoặc IMAP chưa bật trên tài khoản.",
+                        "IMAP Not Authenticated", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Error);
+                    throw new InvalidOperationException("IMAP OAuth2 authentication failed.");
+                }
+
+                // Lấy danh sách mailbox thực tế để debug
                 var mailboxes = await GetMailboxesAsync();
-                // Ưu tiên "Inbox", "Hộp thư đến", hoặc mailbox đầu tiên
+                System.Windows.Forms.MessageBox.Show(
+                    "Mailboxes thực tế:\n" + string.Join("\n", mailboxes), "Mailbox List");
+
+                // Ưu tiên "INBOX", "Inbox", "Hộp thư đến", hoặc mailbox đầu tiên
                 var inbox = mailboxes.FirstOrDefault(mb =>
-                    string.Equals(mb, "INBOX", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(mb, "Inbox", StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(mb, "Hộp thư đến", StringComparison.OrdinalIgnoreCase) ||
-                    mb.ToLower().Contains("inbox") ||
-                    mb.ToLower().Contains("hộp thư")
+                    string.Equals(mb, "Inbox", StringComparison.OrdinalIgnoreCase)
                 );
                 if (!string.IsNullOrEmpty(inbox))
                     _currentMailbox = inbox;
                 else
-                    _currentMailbox = mailboxes.FirstOrDefault() ?? "INBOX";
-
+                    _currentMailbox = mailboxes.FirstOrDefault() ?? "Inbox";
             }
             else
             {
                 await _imapClient.AuthenticateAsync(email, accessToken);
+
+                if (!_imapClient.IsAuthenticated)
+                {
+                    System.Windows.Forms.MessageBox.Show(
+                        "IMAP authentication failed (không phải OAuth2).",
+                        "IMAP Not Authenticated", System.Windows.Forms.MessageBoxButtons.OK, System.Windows.Forms.MessageBoxIcon.Error);
+                    throw new InvalidOperationException("IMAP authentication failed.");
+                }
+
                 _currentMailbox = "INBOX";
             }
         }
+
 
         public async Task<List<string>> GetMailboxesAsync()
         {
